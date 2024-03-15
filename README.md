@@ -20,3 +20,6 @@ multivariant (MANOVA, vàries variables d'interès).
 
 ## notes desenvolupament temporals
 - 2-way ANOVA (és a dir: 1 variable i 2 factors) ja funciona
+
+## responsable
+Lluís Bosch (lbosch@icra.cat)
