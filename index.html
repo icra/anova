@@ -1,6 +1,34 @@
 <!doctype html><html><head>
   <meta charset=utf8>
   <title>ANOVA</title>
+  <style>
+    table{
+      border-collapse:collapse;
+    }
+    th[chosen=true]{
+      background:yellow;
+    }
+    td[chosen=true]{
+      background:lightgreen;
+    }
+    [clicable]:hover{
+      cursor:pointer;
+      text-decoration:underline;
+    }
+    [nowrap]{
+      white-space:nowrap;
+    }
+    [p_value]{
+      font-weight:bold;
+    }
+    [center]{
+      text-align:center;
+    }
+    [filtered=true]{
+      background:lightblue;
+    }
+  </style>
+
   <script src="libs/jstat.min.js"></script>
   <script src="libs/vue.global.prod.js"></script>
   <script>
@@ -61,7 +89,7 @@
       });
 
       Object.entries(factors).forEach(([factor,set])=>{
-        assert(set.size>1,`factor "${factor}" must have more than 1 value`);
+        assert(set.size>1,`factor "${factor}" must have more than 1 different value`);
       });
 
       //mean for each value of each factor
@@ -69,9 +97,9 @@
       Object.entries(factors).forEach(([factor,set])=>{
         means_within_factor_values[factor]={};
         Array.from(set).forEach(value=>{
-          let grups = table.filter(g=>g.factors[factor]==value);
+          let grups        = table.filter(g=>g.factors[factor]==value);
           let observations = grups.map(gr=>gr.observations).reduce((p,c)=>[...p,...c],[])
-          let mean = observations.mean();
+          let mean         = observations.mean();
           means_within_factor_values[factor][value] = mean;
         });
       });
@@ -85,6 +113,7 @@
         //number of levels OF THE OTHER FACTOR
         let b = Object.values(factors)[[1,0][i]].size;
 
+        //means of each value of this factor
         let means = Object.values(means_within_factor_values[factor]);
 
         //sum of squares for this factor
@@ -263,7 +292,6 @@
       );
     })();
   </script>
-
   <script>//frontend helper function
     //frontend helper
     function scale(cis){
@@ -275,7 +303,7 @@
       let offset = 0;
 
       if(min<0){
-        offset = Math.abs(min);
+        offset = -min;
       }
 
       //calcula scaling factor
@@ -290,25 +318,6 @@
       return rv;
     }
   </script>
-
-  <style>
-    table{
-      border-collapse:collapse;
-    }
-    td[number]{
-      text-align:right;
-    }
-    th[chosen=true]{
-      background:yellow;
-    }
-    td[chosen=true]{
-      background:lightgreen;
-    }
-    [clicable]:hover{
-      cursor:pointer;
-      text-decoration:underline;
-    }
-  </style>
 </head><body>
 <div>
   <b>Web under construction (2024-March)</b> &mdash;
@@ -325,7 +334,7 @@
       align-items:center;
     "
   >
-    <div>Datasets available:&nbsp;</div>
+    <div>Available datasets:&nbsp;</div>
     <div v-for="researcher_alias in Object.keys(datasets)">
       <button @click="fetch_dataset(researcher_alias)">
         <b v-if="researcher_alias==current_dataset" title="current dataset">
@@ -350,11 +359,31 @@
         >{{current_dataset}}</a> ({{dataset.length}} rows, {{dataset[0].length}} columns)
       </span>
       &nbsp;
-      <button @click="see_raw_dataset=1" :disabled="see_raw_dataset">See raw dataset</button>
-      <button @click="see_raw_dataset=0" :disabled="!see_raw_dataset">Hide raw dataset</button>
+      <button @click="see_raw_dataset=1" :disabled="see_raw_dataset">See dataset</button>
+      <button @click="see_raw_dataset=0" :disabled="!see_raw_dataset">Collapse</button>
     </div>
 
     <div>
+      <div v-if=filters.length>
+        <b>Filters ({{filters.length}})</b>
+        <table border=1>
+          <tr v-for="f,i in filters">
+            <td>"{{factors[f.index]}}"</td>
+            <td>=</td>
+            <td>"{{f.value}}"</td>
+            <td>
+              <button @click="reset_anova();filters.splice(i,1)">delete filter</button>
+            </td>
+          </tr>
+        </table>
+      </div>
+
+      <b v-if="get_dataset_filtered.length">
+        Dataset ({{get_dataset_filtered.length}} rows, {{get_dataset_filtered[0].length}} columns)
+        &mdash;
+        <span v-if="filters.length">(filtered)</span>
+        <span v-else>(no filters applied)</span>
+      </b>
       <table border=1 style="font-size:10px">
         <thead>
           <tr>
@@ -363,26 +392,29 @@
             </th>
           </tr>
           <tr>
-            <th v-for="f in factors"
-              clicable
+            <th v-for="f,i in factors"
+              clicable nowrap
+              :filtered="cols_filtered.has(i)"
               :chosen="f==chosen_f1 || f==chosen_f2"
-              @dblclick="chosen_f1=f"
-              @click="chosen_f2=f"
-              style="white-space:nowrap"
+              @click="chosen_f1=f"
+              @click.right.prevent="chosen_f2=f"
             >{{f}}</th>
             <td v-for="r in response_variables"
-              clicable
+              clicable nowrap center
               @click="chosen_rv=r"
               :chosen="r==chosen_rv"
-              style="white-space:nowrap"
             >{{r}}</td>
           </tr>
         </thead>
+
         <tbody v-show="see_raw_dataset">
-          <tr v-for="row in dataset">
-            <td v-for="cell in row">
-              {{cell}}
-            </td>
+          <tr v-for="row in get_dataset_filtered">
+            <td v-for="cell,i in row"
+              clicable
+              :filtered="cols_filtered.has(i)"
+              @click="reset_anova();filters.push({index:i,value:cell})"
+              v-html="cell"
+            ></td>
           </tr>
         </tbody>
       </table>
@@ -390,7 +422,7 @@
   </div>
 
   <div v-if="dataset && factors && response_variables">
-    <b>Choose 2 Factors and 1 Response Variable for ANOVA:</b>
+    <b>Choose 2 Factors and 1 Response Variable (for ANOVA):</b>
     <table border=1>
       <tr><td>Factor 1          <td> <select v-model="chosen_f1" :disabled="table"><option v-for="op in factors">{{op}}</option></select>
       <tr><td>Factor 2          <td> <select v-model="chosen_f2" :disabled="table"><option v-for="op in factors">{{op}}</option></select>
@@ -409,8 +441,8 @@
         <th colspan=200>"{{chosen_rv}}" observations</th>
       </tr>
       <tr v-for="row,i in table">
-        <td v-for="val,key in row.factors">{{key}}: {{val}}</td>
-        <td v-for="n in row.observations" style="text-align:right">{{n}}</td>
+        <td v-for="val,key in row.factors" nowrap>{{key}}: {{val}}</td>
+        <td v-for="n in row.observations" center>{{n}}</td>
         <td v-for="n in largest_group_size-row.observations.length"></td>
         <td>
           <button @click="table.splice(i,1)">delete group</button>
@@ -425,7 +457,15 @@
   </div>
 
   <div v-if="anova_result">
-    <b>ANOVA result (2 tables) &mdash; Studied variable: {{chosen_rv}}</b>
+    <b>ANOVA results for "{{chosen_rv}}" vs {"{{chosen_f1}}","{{chosen_f2}}"}</b>
+    <b v-if="filters.length">
+      WHEN
+      <span>
+        {{
+          filters.map(f=>`"${factors[f.index]}"="${f.value}"`).join(", ")
+        }}
+      </span>
+    </b>
     <table border=1>
       <tr>
         <td>Total observations
@@ -450,16 +490,17 @@
                 <table border=1 style="font-size:smaller">
                   <tr>
                     <th></th>
+                    <th>CI-95%-lo</th>
                     <th>mean</th>
-                    <th>CI-95%</th>
+                    <th>CI-95%-hi</th>
                     <th>CI-95% graphic</th>
                   </tr>
                   <tr v-for="mean,name in m">
-                    <td style="white-space:nowrap">"{{name}}"</td>
-                    <td>{{mean.toFixed(4)}}</td>
-                    <td style="white-space:nowrap">
-                      {{anova_result.ci_within_factor_values[factor][name].map(n=>parseFloat(n.toFixed(4)))}}
-                    </td>
+                    <td nowrap>"{{name}}"</td>
+                    <td center v-for="n in [anova_result.ci_within_factor_values[factor][name][0]]">{{parseFloat(n.toFixed(4))}}</td>
+                    <td center>{{mean.toFixed(4)}}</td>
+                    <td center v-for="n in [anova_result.ci_within_factor_values[factor][name][1]]">{{parseFloat(n.toFixed(4))}}</td>
+                    <!--CI-95 "graphic"-->
                     <td v-for="s in [scale(anova_result.ci_within_factor_values[factor])]">
                       <div
                         :style="{
@@ -488,8 +529,8 @@
         <th>Source of variation</th>
         <th>Sum of squares (SS)</th>
         <th>Degrees of freedom (df)</th>
-        <th>Mean Square (MS)</th>
-        <th>F<sub>0</sub></th>
+        <th>Mean Square (MS=SS/df)</th>
+        <th>F<sub>0</sub> (=MS/MS<sub>error</sub>)</th>
         <th>p-value</th>
       </tr>
       <tr v-for="obj,fac in anova_result.factors">
@@ -501,32 +542,32 @@
             </li>
           </ul>
         </td>
-        <td number>{{anova_result.SSB[fac].toFixed(4)}}</td>
-        <td number>{{anova_result.degrees_of_freedom.factors[fac]}}</td>
-        <td number>{{anova_result.MS.factors[fac].toFixed(4)}}</td>
-        <td number>{{anova_result.F_ratio.factors[fac].toFixed(4)}}</td>
-        <td number>{{anova_result.p_value.factors[fac]}}</td>
+        <td center>{{anova_result.SSB[fac].toFixed(4)}}</td>
+        <td center>{{anova_result.degrees_of_freedom.factors[fac]}}</td>
+        <td center>{{anova_result.MS.factors[fac].toFixed(4)}}</td>
+        <td center>{{anova_result.F_ratio.factors[fac].toFixed(4)}}</td>
+        <td center p_value>{{anova_result.p_value.factors[fac]}}</td>
       </tr>
       <tr>
         <td>Interaction</td>
-        <td number>{{anova_result.SSI.toFixed(4)}}</td>
-        <td number>{{anova_result.degrees_of_freedom.interaction}}</td>
-        <td number>{{anova_result.MS.interaction.toFixed(4)}}</td>
-        <td number>{{anova_result.F_ratio.interaction.toFixed(4)}}</td>
-        <td number>{{anova_result.p_value.interaction}}</td>
+        <td center>{{anova_result.SSI.toFixed(4)}}</td>
+        <td center>{{anova_result.degrees_of_freedom.interaction}}</td>
+        <td center>{{anova_result.MS.interaction.toFixed(4)}}</td>
+        <td center>{{anova_result.F_ratio.interaction.toFixed(4)}}</td>
+        <td center p_value>{{anova_result.p_value.interaction}}</td>
       </tr>
       <tr>
         <td>Error</td>
-        <td number>{{anova_result.SSE.toFixed(4)}}</td>
-        <td number>{{anova_result.degrees_of_freedom.error}}</td>
-        <td number>{{anova_result.MS.error.toFixed(4)}}</td>
+        <td center>{{anova_result.SSE.toFixed(4)}}</td>
+        <td center>{{anova_result.degrees_of_freedom.error}}</td>
+        <td center>{{anova_result.MS.error.toFixed(4)}}</td>
         <td></td>
         <td></td>
       </tr>
       <tr>
         <td>Total</td>
-        <td number>{{anova_result.SST.toFixed(4)}}</td>
-        <td number>{{anova_result.N-1}}</td>
+        <td center>{{anova_result.SST.toFixed(4)}}</td>
+        <td center>{{anova_result.N-1}}</td>
         <td></td>
         <td></td>
         <td></td>
@@ -585,7 +626,6 @@
         }
       });
     });
-
     return table;
   }
 
@@ -887,6 +927,7 @@
       dataset:null,           //raw table
       factors:null,           //array of names
       response_variables:null,//array of names
+      filters:[],             //a filter is an object {index,value} applied to the dataset
 
       //result of "agregate" function, input for anova (groups)
       /*
@@ -923,13 +964,17 @@
           throw(err);
         }
         this.table = agregate(
-          this.dataset,   this.factors,   this.response_variables,
-          this.chosen_f1, this.chosen_f2, this.chosen_rv
+          this.get_dataset_filtered, this.factors,   this.response_variables,
+          this.chosen_f1,            this.chosen_f2, this.chosen_rv
         );
       },
 
       calculate_anova(){
-        this.anova_result = two_way_anova(this.table);
+        try{
+          this.anova_result = two_way_anova(this.table);
+        }catch(err){
+          alert(err);
+        }
       },
 
       fetch_dataset(researcher_alias){
@@ -946,18 +991,50 @@
 
       make_current_dataset(researcher_alias){
         let target              = this.datasets[researcher_alias];
+        this.current_dataset    = researcher_alias;
         this.dataset            = target.dataset;
         this.factors            = target.factors;
         this.response_variables = target.response_variables;
-        this.chosen_f1          = this.factors[0];
-        this.chosen_f2          = this.factors[1];
-        this.chosen_rv          = this.response_variables[0];
-        this.current_dataset    = researcher_alias;
+        this.filters            = [];
+
+        this.chosen_f1          = "";
+        this.chosen_f2          = "";
+        this.chosen_rv          = "";
+
+        this.table              = null;
+        this.anova_result       = null;
+
         this.see_raw_dataset    = true;
+      },
+
+      //to be used when editing filters
+      reset_anova(){
+        this.table=null;
+        this.anova_result=null;
       },
     },
 
     computed:{
+      get_dataset_filtered(){
+        //return value
+        let dataset = this.dataset.map(r=>r); //copy original dataset
+
+        //apply filters
+        this.filters.forEach(f=>{
+          dataset = dataset.filter(r=>{
+            return r[f.index]==f.value;
+          });
+        });
+
+        return dataset;
+      },
+
+      //columns that are part of a defined filter
+      cols_filtered(){
+        let indexs = this.filters.map(f=>f.index);
+        return new Set(indexs);
+      },
+
       //frontend
       largest_group_size(){
         let t = this.table;
