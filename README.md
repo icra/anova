@@ -13,10 +13,15 @@ observació nº, factor_1, factor_2, ..., factor_n, variable_interès_1, variabl
 
 on els factors són variables categòriques, i les variables d'interès són numèriques
 
-Sovint es vol determinar quins factors tenen més impacte en les variables de resposta.
+Es vol determinar quins factors tenen més impacte en les variables de resposta.
 
-Es vol implementar tant univariant (multiway ANOVA, és a dir varis factors) com
-multivariant (MANOVA, vàries variables d'interès).
+<b>
+  L'avantatge de tenir una interfície web és que permet modificar ràpidament
+  els factors escollits i la variable de resposta escollida, així com excloure
+  o incloure grups de factors ràpidament, i reexecutar l'ANOVA, així es pot
+  tenir un retorn visual immediat.
+</b>
+
 
 ## notes desenvolupament temporals
 - 2-way ANOVA (és a dir: 1 variable i 2 factors) ja funciona
